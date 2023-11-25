@@ -1,0 +1,18 @@
+name: tps
+channels:
+  - defaults
+dependencies:
+- python>=3.8
+- pip>=21
+- scikit-image=0.18.1
+- pip:
+   - transformers
+   - ftfy
+   - regex
+   - tqdm
+   - requests
+   - timm
+   - numpy
+   - pandas
+   - torch
+prefix: ./miniconda3/envs/tps
