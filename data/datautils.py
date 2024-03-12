@@ -6,8 +6,6 @@ import numpy as np
 import torch
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
-from torch.utils.data import Subset
-
 try:
     from torchvision.transforms import InterpolationMode
     BICUBIC = InterpolationMode.BICUBIC
@@ -18,7 +16,7 @@ from data.fewshot_datasets import *
 import data.augmix_ops as augmentations
 
 ID_to_DIRNAME={
-    'I': 'imagenet',
+    'I': 'ImageNet/imagenet',
     'A': 'imagenet-a',
     'A_sub': 'imagenet-a_subset',
     'K': 'sketch',
@@ -49,21 +47,21 @@ ID_to_DIRNAME={
     'eurosat_sub': 'eurosat',
 }
 
-def build_dataset(set_id, transform, data_root, mode='test', n_shot=None, num_classes=None):
+def build_dataset(set_id, transform, data_root, mode='test', n_shot=None, split="all", bongard_anno=False, num_classes=None):
     if set_id == 'I':
         # ImageNet validation set
-        testdir = os.path.join(os.path.join(data_root, ID_to_DIRNAME[set_id]), 'val')
+        # testdir = os.path.join(os.path.join(data_root, ID_to_DIRNAME[set_id]), 'val')
+        testdir = os.path.join(os.path.join(ID_to_DIRNAME[set_id]), 'val')
         testset = datasets.ImageFolder(testdir, transform=transform)
-
-        if num_classes is not None:
-            # build the appropriate subset
-            idx = [i for i in range(len(testset)) if testset.imgs[i][1] < num_classes]
-            testset = Subset(testset, idx)
 
     elif set_id in ['A', 'K', 'R', 'V']:
-        testdir = os.path.join(data_root, ID_to_DIRNAME[set_id])
+        if num_classes != '' and num_classes is not None:
+            testdir = os.path.join(data_root, f'imagenet_v2_{num_classes}')
+        else:
+            testdir = os.path.join(data_root, ID_to_DIRNAME[set_id])
         testset = datasets.ImageFolder(testdir, transform=transform)
-    elif set_id in list(path_dict.keys()) + ['aircraft']:
+
+    elif set_id in list(path_dict.keys()) + ['aircraft', 'aircraft_sub']:
         if mode == 'train' and n_shot:
             testset = build_fewshot_dataset(set_id, os.path.join(data_root, ID_to_DIRNAME[set_id.lower()]), transform, mode=mode, n_shot=n_shot)
         else:

@@ -1,2 +1,0 @@
-
-{"dataset": "A", "concept_type": "labo", "batch_size": 1, "lr:": 0.005, "seed": 0, "tta_steps": 0, "top1_avg": 50.09333419799805, "top5_avg": 80.84000396728516, "batch_time_avg": 0.008769221146901448}

@@ -6,17 +6,10 @@ class ClipImageEncoder(nn.Module):
         super(ClipImageEncoder, self).__init__()
         self.encoder = clip_model
 
-        self.ln_post_weight_init = clip_model.ln_post.weight.detach().clone()
-        self.ln_post_bias_init = clip_model.ln_post.bias.detach().clone()
-
     
     @property
     def dtype(self):
         return self.encoder.conv1.weight.dtype
-    
-    def reset(self):
-        self.encoder.ln_post.weight.copy_(self.ln_post_weight_init)
-        self.encoder.ln_post.bias.copy_(self.ln_post_bias_init)
 
 
     def forward(self, image):

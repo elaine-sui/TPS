@@ -6,6 +6,9 @@ import pickle
 
 from tqdm import tqdm
 
+import sys
+sys.path.append(os.getcwd())
+
 from model import load, tokenize, DOWNLOAD_ROOT
 from model.text_encoders import TextEncoderWithPrompt
 from data.imagenet_prompts_clean import imagenet_classes, imagenet_templates
@@ -37,30 +40,34 @@ CLASSES_DICT = {
     "cars": cars_classes,
 }
 
-arch='ViT-B/16'
 device='cuda'
 
-clip, _, _ = load(arch, device=device, download_root=DOWNLOAD_ROOT)
-
 n_ctx = 4
-dtype = clip.visual.conv1.weight.dtype
 
 coop_path = 'checkpoints/to_gdrive/vit_b16_ep50_16shots/nctx4_cscFalse_ctpend/seed1/prompt_learner/model.pth.tar-50'
 ctx = torch.load(coop_path)['state_dict']['ctx'].unsqueeze(0)
 
-text_encoder_w_prompt = TextEncoderWithPrompt(clip)
 
 def main(args):
 
-    dir_class_embeds = 'class_embeds'
+    clip, _, _ = load(args.arch, device=device, download_root=DOWNLOAD_ROOT)
+    dtype = clip.visual.conv1.weight.dtype
+    text_encoder_w_prompt = TextEncoderWithPrompt(clip)
+
     if args.x_templates:
-        dir_class_embeds += '_w_imagenet_templates'
-    else:
+        dir_class_embeds = 'class_embeds_w_imagenet_templates'
+    elif args.coop:
         dir_class_embeds = 'coop_embeds'
+    else:
+        dir_class_embeds = 'class_embeds'
+    
+    dir_class_embeds = os.path.join(args.arch.replace('/', '-').lower() + "_embeds", dir_class_embeds)
 
     os.makedirs(dir_class_embeds, exist_ok=True)
 
-    DATASETS = ["EuroSAT", "aircraft", "DTD", "flower", "food101", "UCF101", "SUN397", "CalTech101", "cars", "ImageNet", "pets"]
+    print(f"Saving class embeds to {dir_class_embeds}")
+
+    DATASETS = ["EuroSAT", "aircraft", "DTD", "flower", "food101", "UCF101", "SUN397", "CalTech101", "cars", "pets", "ImageNet"]
 
     for dataset in DATASETS:
         print(f"Dataset: {dataset}")
@@ -109,6 +116,7 @@ def main(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+    parser.add_argument('--arch', type=str, default='ViT-B/16', choices=['ViT-B/16', 'RN50'])
     parser.add_argument('--x_templates', action='store_true', help='whether to use imagenet templates')
     parser.add_argument('--coop', action='store_true', help='whether to use coop prefix')
 

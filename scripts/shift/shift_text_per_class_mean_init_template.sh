@@ -1,6 +1,6 @@
 #!/bin/bash
 
-data_root='data'
+data_root='/path/to/root'
 testsets=$1
 arch=ViT-B/16
 bs=64

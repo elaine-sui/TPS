@@ -1,10 +1,11 @@
 #!/bin/bash
 
-data_root='data'
+data_root='/path/to/root'
 testsets=$1
 arch=ViT-B/16
 bs=64
 ctx_init=a_photo_of_a
+seed=$2
 
 python ./tpt_classification.py ${data_root} --test_sets ${testsets} \
 -a ${arch} -b ${bs} --gpu 0 \

@@ -23,28 +23,25 @@ except ImportError:
 from model.learnable_shift import get_shift_model
 from data.imagenet_prompts_clean import imagenet_classes
 from data.datautils import AugMixAugmenter, build_dataset
-from utils.tools import Summary, AverageMeter, ProgressMeter, accuracy, set_random_seed
+from utils.tools import Summary, AverageMeter, ProgressMeter, accuracy, load_model_weight, set_random_seed
 from data.cls_to_names import *
 from data.fewshot_datasets import fewshot_datasets
 from data.imagenet_variants import (
     thousand_k_to_200, 
     imagenet_a_mask, 
     imagenet_r_mask, 
-    imagenet_v_mask, 
+    imagenet_v_mask,
 )
 
 
-from run_utils import select_confident_samples, avg_entropy, IMAGENET_VARIANTS, log_results
+from run_utils import select_confident_samples, avg_entropy, model_names, IMAGENET_VARIANTS, log_results
+
 from args import parse_args
 
 def run_shift_iter(model, inputs, args):
     output = model(inputs)
-
     preds = F.softmax(output[0], dim=-1)
     pred = torch.argmax(preds).item()
-
-    if args.verbose:
-        print(f"Predictions: {preds}", f"output: {torch.argmax(preds).item()}")
 
     output, _ = select_confident_samples(output, args.selection_p)
     loss = avg_entropy(output)
@@ -74,10 +71,7 @@ def main(args):
 
 def main_worker(gpu, args):
     args.gpu = gpu
-    # set_random_seed(args.seed)
     print("Use GPU: {} for training".format(args.gpu))
-
-    args.init_weight = args.weight
 
     # create model (zero-shot clip model (ViT-L/14@px336) with promptruning)
     datasets = args.test_sets.split("/")
@@ -85,11 +79,6 @@ def main_worker(gpu, args):
     for set_id in datasets:
         set_random_seed(args.seed)
         args.test_sets = set_id
-
-        if args.test_sets in fewshot_datasets:
-            classnames = eval("{}_classes".format(args.test_sets.lower()))
-        else:
-            classnames = imagenet_classes
 
         # norm stats from clip.load()
         normalize = transforms.Normalize(mean=[0.48145466, 0.4578275, 0.40821073],
@@ -108,7 +97,6 @@ def main_worker(gpu, args):
                 normalize])
             data_transform = AugMixAugmenter(base_transform, preprocess, n_views=args.batch_size-1, 
                                             augmix=len(set_id)>1)
-            # batchsize = 1
         else:
             data_transform = transforms.Compose([
                 transforms.Resize(args.resolution, interpolation=BICUBIC),
@@ -117,44 +105,34 @@ def main_worker(gpu, args):
                 normalize,
             ])
 
-        batchsize = 1 #if args.tpt else args.batch_size
+        batchsize = 1
 
         print("evaluating: {}".format(set_id))
         # reset the model
         # Reset classnames of custom CLIP model
-
-        set_id_base = set_id.split('_sub')[0]
-        set_id_num_classes = None
-        original_set_id = set_id
-
-        if set_id_base not in IMAGENET_VARIANTS: 
+        if set_id not in IMAGENET_VARIANTS: 
             # fine-grained classification datasets
-            classnames = eval("{}_classes".format(set_id_base.lower()))
+            classnames = eval("{}_classes".format(set_id.lower()))
         else:
-            assert set_id_base in IMAGENET_VARIANTS
+            assert set_id in IMAGENET_VARIANTS
             classnames_all = imagenet_classes
 
             classnames = []
-            if set_id in set(IMAGENET_VARIANTS) - {'I', 'K'}:
+            if set_id in ['A', 'R', 'V']:
+
                 label_mask = eval("imagenet_{}_mask".format(set_id.lower()))
 
-                if set_id in ['R']:
+                if set_id in ['R', 'R_sub']:
                     for i, m in enumerate(label_mask):
                         if m:
                             classnames.append(classnames_all[i])
                 else:
+                    if args.num_classes:
+                        label_mask = range(args.num_classes)
+
                     classnames = [classnames_all[i] for i in label_mask]
             else:
                 classnames = classnames_all
-        
-            if '_sub' in set_id:
-                set_id_num_classes = set_id.split('_sub')[1]
-            
-                if set_id_num_classes != '':
-                    set_id_num_classes = int(set_id_num_classes)
-                    classnames = classnames[:set_id_num_classes]
-                    set_id = set_id_base
-                    args.test_sets = set_id
         
         # Load model
         model = get_shift_model(args, classnames)
@@ -170,7 +148,7 @@ def main_worker(gpu, args):
                 model.prompt_learner.ctx_init_state = pretrained_ctx
 
         for name, param in model.named_parameters():
-            if (args.tpt and "prompt_learner" not in name) and (args.scale and "scaler" not in name) and (args.learnable_class_weight_matrix and 'class_weight_matrix' not in name):
+            if (args.tpt and "prompt_learner" not in name) and (args.scale and "scaler" not in name):
                 param.requires_grad_(False)
         
         print("=> Model created: visual backbone {}".format(args.arch))
@@ -184,7 +162,7 @@ def main_worker(gpu, args):
 
         cudnn.benchmark = True
 
-        val_dataset = build_dataset(set_id, data_transform, args.data, mode=args.dataset_mode, num_classes=set_id_num_classes)
+        val_dataset = build_dataset(set_id, data_transform, args.data, mode=args.dataset_mode, num_classes=args.num_classes)
         
         print("number of test samples: {}".format(len(val_dataset)))
         val_loader = torch.utils.data.DataLoader(
@@ -195,6 +173,7 @@ def main_worker(gpu, args):
         # define optimizer
         optimizer, optim_state = None, None
         trainable_param = []
+
         if args.text_shift:
             trainable_param += model.text_shifter.parameters()
         
@@ -212,12 +191,10 @@ def main_worker(gpu, args):
         try:
             print("=> Acc. on testset [{}]: @1 {}/ @5 {}".format(set_id, results[set_id][0], results[set_id][1]))
             print("=> Average batch time on testset [{}]: {}".format(set_id, results[set_id][2]))
-            print("=> Original cosine similarity on testset [{}]: {:3f}".format(set_id, results[set_id][3]))
-            print("=> Shifted cosine similarity on testset [{}]: {:3f}".format(set_id, results[set_id][4]))
         except:
             print("=> Acc. on testset [{}]: {}".format(set_id, results[set_id]))
         
-        log_results(results[set_id][0], results[set_id][1], results[set_id][2], args.logname, original_set_id, args.tta_steps, args.batch_size, args.lr, concept_type=args.concept_type, seed=args.seed)
+        log_results(results[set_id][0], results[set_id][1], results[set_id][2], args.logname, set_id + str(args.num_classes), args.tta_steps, args.weight, args.batch_size, args.lr, concept_type=args.concept_type, seed=args.seed, arch=args.arch)
 
     print("======== Result Summary ========")
     print("params: nstep	lr	bs")
@@ -273,11 +250,10 @@ def test_time_adapt_eval(val_loader, model, optimizer, optim_state, scaler, args
         if args.tta_steps > 0:
             test_time_tuning(model, images, optimizer, scaler, args)
 
-        # The actual inference goes here        
         with torch.no_grad():
             with torch.cuda.amp.autocast():
-                output = model(image)
-
+                output = model(image, test=True)
+        
         # measure accuracy and record loss (note: output shape [1, num_classes])
         acc1, acc5 = accuracy(output, target, topk=(1, 5))
                 
@@ -292,7 +268,7 @@ def test_time_adapt_eval(val_loader, model, optimizer, optim_state, scaler, args
             progress.display(i)
 
     progress.display_summary()
-    
+
     return [top1.avg, top5.avg, batch_time.avg]
 
 

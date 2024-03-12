@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import pickle
-import json
 
 from model import load, DOWNLOAD_ROOT
 from data.fewshot_datasets import fewshot_datasets
@@ -21,8 +20,8 @@ class TestTimeTuning(nn.Module):
                         tpt=True, 
                         n_ctx=16, ctx_init=None, ctx_position='end', learned_cls=False,
                         test_set=None,
-                        concept_type='labo', 
-                        init_concepts=False, combine_type='mean',
+                        concept_type='gpt4', 
+                        init_concepts=False,
                         per_label=False,
                         with_concepts=False,
                         concat_concepts=False,
@@ -30,6 +29,7 @@ class TestTimeTuning(nn.Module):
                     ):
         super(TestTimeTuning, self).__init__()
         clip, _, _ = load(arch, device=device, download_root=DOWNLOAD_ROOT)
+        self.arch = arch
         self.clip = clip
         self.device = device
         self.batch_size = batch_size
@@ -37,7 +37,6 @@ class TestTimeTuning(nn.Module):
 
         self.classnames = classnames
         self.init_concepts = init_concepts
-        self.combine_type = combine_type
         self.with_concepts = with_concepts
         self.concat_concepts = concat_concepts
         self.ensemble_concepts = ensemble_concepts
@@ -63,7 +62,7 @@ class TestTimeTuning(nn.Module):
             self.prompt_learner = self.load_prompt_learner()
 
         if self.ensemble_concepts:
-            self.text_embeds = self.load_class_prototypes()
+            self.text_embeds = self.load_class_prototypes() #self.load_text_embeds()
         
     @property
     def dtype(self):
@@ -87,7 +86,7 @@ class TestTimeTuning(nn.Module):
 
     def load_class_prototypes(self):
         # Load concept embeds
-        concept_text_embeds_path = get_concept_embeds_path(self.test_set, self.concept_type)
+        concept_text_embeds_path = get_concept_embeds_path(self.test_set, self.concept_type, self.arch)
         
         print(f"Loading {self.test_set} prompt embeds from {concept_text_embeds_path}")
         with open(concept_text_embeds_path, 'rb') as f:
@@ -97,7 +96,7 @@ class TestTimeTuning(nn.Module):
         concept_text_embeds = torch.stack(concept_text_embeds).to(self.device) # (N, max_num_concepts, embed_dim)
 
         # Load template embeds
-        class_text_embeds_path = get_class_embeds_path(self.test_set, with_templates=True, with_coop=False)
+        class_text_embeds_path = get_class_embeds_path(self.test_set, with_templates=True, with_coop=False, arch=self.arch)
 
         print(f"Loading {self.test_set} prompt embeds from {class_text_embeds_path}")
         with open(class_text_embeds_path, 'rb') as f:
@@ -114,9 +113,9 @@ class TestTimeTuning(nn.Module):
     
     def load_text_embeds(self):
         if self.with_concepts:
-            prompt_embeds_path = get_concept_embeds_path(self.test_set, self.concept_type)
+            prompt_embeds_path = get_concept_embeds_path(self.test_set, self.concept_type, self.arch)
         else:
-            prompt_embeds_path = get_class_embeds_path(self.test_set)
+            prompt_embeds_path = get_class_embeds_path(self.test_set, arch=self.arch)
 
         print(f"Loading {self.test_set} prompt embeds from {prompt_embeds_path}")
         with open(prompt_embeds_path, 'rb') as f:
@@ -162,10 +161,10 @@ class TestTimeTuning(nn.Module):
         return img_features
 
 
-    def get_text_features(self):
+    def get_text_features(self, new_ctx, override):
         if self.tpt:
-            prompts = self.prompt_learner()
-            tokenized_prompts = self.prompt_learner.get_tokenized_prompts()
+            prompts = self.prompt_learner(init=new_ctx, override=override)
+            tokenized_prompts = self.prompt_learner.get_tokenized_prompts(override=override)
             text_features = self.text_encoder(prompts, tokenized_prompts)
         
         if self.ensemble_concepts:
@@ -178,34 +177,11 @@ class TestTimeTuning(nn.Module):
 
         return text_features
 
-
-    def convert_concept2class_logits(self, logits):
-        # logits shape: (num_concepts, num_dist)
-
-        logits_separated = []
-
-        start = 0
-        for _, concepts in self.class2concepts.items():
-            logits_separated.append(logits[start:start+len(concepts)])
-            start += len(concepts)
-        
-        if self.combine_type == 'mean':
-            logits_cumulative = [l.mean(dim=0) for l in logits_separated]
-        elif self.combine_type == 'max':
-            logits_cumulative = [l.max(dim=0).values for l in logits_separated]
-        elif self.combine_type == 'sum':
-            logits_cumulative = [l.sum(dim=0) for l in logits_separated]
-        
-        logits = torch.stack(logits_cumulative) # (num_classes, num_dist)
-
-        return logits.T
-
-
-    def forward(self, image):
+    def forward(self, image, override=None, ctx=None):
         # Get image features
         image_features = self.get_img_features(image.type(self.dtype)) # (bs, 512)
 
-        text_features = self.get_text_features()
+        text_features = self.get_text_features(new_ctx=ctx, override=override)
 
         logit_scale = self.logit_scale.exp()
 
@@ -216,9 +192,6 @@ class TestTimeTuning(nn.Module):
         else: # len(logits.shape) == 3  # (num_dist, num_classes, bs)
             num_classes = logits.shape[1]
             logits = logits.permute(0, 2, 1).reshape(-1, num_classes)
-        
-        if self.init_concepts and not self.concat_concepts: # instead of num_classes, it's num_concepts
-            logits = self.convert_concept2class_logits(logits.T)
         
         return logits
 
@@ -237,7 +210,6 @@ def get_tpt_coop(args, classnames, learned_cls=False):
                             test_set=args.test_sets,
                             concept_type=args.concept_type,
                             init_concepts=args.init_concepts,
-                            combine_type=args.combine_type,
                             per_label=args.per_label,
                             with_concepts=args.with_concepts,
                             concat_concepts=args.concat_concepts,

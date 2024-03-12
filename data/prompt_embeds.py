@@ -1,14 +1,17 @@
 import os
 
 parent_dir = '.'
-CONCEPT_EMBED_DIR_TEMPLATE = '{parent_dir}/concept_embeds_{concept_type}'
-CLASS_EMBED_DIR = f'{parent_dir}/class_embeds'
-COOP_EMBED_DIR = f'{parent_dir}/coop_embeds'
+CONCEPT_EMBED_DIR_TEMPLATE = '{parent_dir}/{arch}_embeds/concept_embeds_{concept_type}'
+CLASS_EMBED_DIR_TEMPLATE = '{parent_dir}/{arch}_embeds/class_embeds'
+COOP_EMBED_DIR_TEMPLATE = '{parent_dir}/{arch}_embeds/coop_embeds'
 CLASS2CONCEPT_DICT_TEMPLATE = '{parent_dir}/concept_dict_{concept_type}'
-PROJ_MATRIX_DIR = f'{parent_dir}/proj_matrix'
-CLASS_EMBED_W_TEMPLATES_DIR = f'{parent_dir}/class_embeds_w_imagenet_templates'
+CLASS_EMBED_W_TEMPLATES_DIR_TEMPLATE = '{parent_dir}/{arch}_embeds/class_embeds_w_imagenet_templates'
 
-os.makedirs(PROJ_MATRIX_DIR, exist_ok=True)
+SUSX_TEXT_FEATURES_DIR_TEMPLATE = '{parent_dir}/susx_text_weights/{dataset}_zeroshot_text_weights_m{arch}_ptcombined.pt'
+SUSX_FEATURES_DIR_TEMPLATE = '{parent_dir}/susx_features/sus_lc_photo_{dataset}_f_m{arch}.pt'
+SUSX_LABELS_DIR_TEMPLATE = '{parent_dir}/susx_features/sus_lc_photo_{dataset}_t_m{arch}.pt'
+
+
 
 tpt_to_regular_map = {
     'I': 'ImageNet',
@@ -22,23 +25,6 @@ tpt_to_regular_map = {
     'cars': 'cars',
     'pets': 'pets',
     'sun397': 'SUN397'
-}
-
-tpt_to_labo_map = {
-    'I': 'ImageNet',
-    'flower102': 'flower',
-    'food101': 'food',
-    'dtd': 'DTD',
-    'aircraft': 'aircraft',
-    'ucf101': 'UCF101',
-}
-
-tpt_to_iclr_map = {
-    'I': 'ImageNet',
-    'eurosat': 'EuroSAT',
-    'dtd': 'DTD',
-    'pets': 'pets',
-    'food101': 'food101'
 }
 
 tpt_to_gpt4_map = {
@@ -55,37 +41,48 @@ tpt_to_gpt4_map = {
     'sun397': 'sun397'
 }
 
-TPT_TO_CONCEPT_TYPE_MAP = {'labo': tpt_to_labo_map, 'iclr': tpt_to_iclr_map, 'iclr_no_cond': tpt_to_iclr_map, 'regular': tpt_to_regular_map, 'gpt4': tpt_to_gpt4_map, 'gpt4_x_templates': tpt_to_gpt4_map, 'gpt4_no_cond': tpt_to_gpt4_map}
+tpt_to_susx_map = {
+    'I': 'imagenet',
+    'R': 'imagenet-r',
+    'K': 'imagenet-sketch',
+    'flower102': 'flowers102',
+    'food101': 'food101',
+    'dtd': 'dtd',
+    'aircraft': 'fgvcaircraft',
+    'ucf101': 'ucf101',
+    'eurosat': 'eurosat',
+    'caltech101': 'caltech101',
+    'cars': 'stanfordcars',
+    'pets': 'oxfordpets',
+    'sun397': 'sun397'
+}
 
-imagenet_vars = ['A', 'R', 'V', 'K']
+TPT_TO_CONCEPT_TYPE_MAP = {'regular': tpt_to_regular_map, 'gpt4': tpt_to_gpt4_map, 'gpt4_x_templates': tpt_to_gpt4_map, 'gpt4_no_cond': tpt_to_gpt4_map}
+
+imagenet_vars = ['A', 'R', 'V', 'K', 'V_sub100', 'V_sub200', 'V_sub300', 'V_sub400', 'V_sub500','V_sub600','V_sub700','V_sub800','V_sub900', 'V_sub1000']
 
 for concept, map in TPT_TO_CONCEPT_TYPE_MAP.items():
     for i_var in imagenet_vars:
         TPT_TO_CONCEPT_TYPE_MAP[concept][i_var] = map['I']
 
-    new_map = {}
-    for k,v in map.items():
-        new_map[k + "_sub"] = v
-    
-    TPT_TO_CONCEPT_TYPE_MAP[concept].update(new_map)
 
-def get_concept_embeds_path(test_set, concept_type):
-    embed_dir = CONCEPT_EMBED_DIR_TEMPLATE.format(parent_dir=parent_dir, concept_type=concept_type)
+def get_concept_embeds_path(test_set, concept_type, arch):
+    embed_dir = CONCEPT_EMBED_DIR_TEMPLATE.format(parent_dir=parent_dir, concept_type=concept_type, arch=arch.replace('/', '-').lower())
     if test_set not in TPT_TO_CONCEPT_TYPE_MAP[concept_type]:
         raise ValueError(f"dataset {test_set} doesn't have embeddings of type {concept_type}")
     concept_test_set = TPT_TO_CONCEPT_TYPE_MAP[concept_type][test_set]
 
     return os.path.join(embed_dir, f"{concept_test_set}.pkl")
 
-def get_class_embeds_path(test_set, with_templates=False, with_coop=False):
+def get_class_embeds_path(test_set, with_templates=False, with_coop=False, arch=None):
     concept_test_set = TPT_TO_CONCEPT_TYPE_MAP['regular'][test_set]
 
     if with_templates:
-        dir = CLASS_EMBED_W_TEMPLATES_DIR
+        dir = CLASS_EMBED_W_TEMPLATES_DIR_TEMPLATE.format(parent_dir=parent_dir, arch=arch.replace('/', '-').lower())
     elif with_coop:
-        dir = COOP_EMBED_DIR
+        dir = COOP_EMBED_DIR_TEMPLATE.format(parent_dir=parent_dir, arch=arch.replace('/', '-').lower())
     else:
-        dir = CLASS_EMBED_DIR
+        dir = CLASS_EMBED_DIR_TEMPLATE.format(parent_dir=parent_dir, arch=arch.replace('/', '-').lower())
     
     return os.path.join(dir, f"{concept_test_set}.pkl")
 
@@ -99,5 +96,16 @@ def get_class2concept_dict_path(test_set, concept_type):
 
     return os.path.join(dict_dir, f"{concept_test_set}.json")
 
-def get_proj_matrix_path(test_set):
-    return os.path.join(PROJ_MATRIX_DIR, f'{test_set}.pkl')
+def get_susx_class_embeds_path(test_set, arch):
+    test_set = tpt_to_susx_map[test_set]
+    return SUSX_TEXT_FEATURES_DIR_TEMPLATE.format(parent_dir=parent_dir, dataset=test_set, arch=arch)
+
+def get_susx_feats_and_labels_paths(test_set, arch):
+    test_set = tpt_to_susx_map[test_set]
+    feats_path = SUSX_FEATURES_DIR_TEMPLATE.format(parent_dir=parent_dir, dataset=test_set, arch=arch)
+    labels_path = SUSX_LABELS_DIR_TEMPLATE.format(parent_dir=parent_dir, dataset=test_set, arch=arch)
+
+    return feats_path, labels_path
+
+def get_susx_hyperparams_csv():
+    return 'susx_hyperparams.csv'

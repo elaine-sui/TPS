@@ -15,7 +15,7 @@ class ProtoTextPromptLearner(nn.Module):
         init_concepts=False, 
         class2concepts=None, 
         per_label=False, 
-        optimize=True,
+        optimize=True
     ):
         super().__init__()
         
@@ -74,7 +74,7 @@ class ProtoTextPromptLearner(nn.Module):
         self.classnames = None
         self.reset_classnames(classnames)
 
-        self.num = self.n_concepts if self.init_concepts else self.n_cls
+        self.num = self.n_concepts if (self.init_concepts) else self.n_cls
 
         if self.per_label:
             ctx_vectors = ctx_vectors.repeat(self.num, 1, 1) # (num classes, L, D)
@@ -122,7 +122,7 @@ class ProtoTextPromptLearner(nn.Module):
         if self.init_concepts:
             self._reset_concepts(classnames)
         
-        self.num = self.n_concepts if self.init_concepts else self.n_cls
+        self.num = self.n_concepts if (self.init_concepts) else self.n_cls
 
 
     def _reset_concepts(self, classnames):
@@ -172,30 +172,19 @@ class ProtoTextPromptLearner(nn.Module):
         
         self.classnames = classnames
     
-    def get_tokenized_prompts(self):
-        if self.init_concepts:
+    def get_tokenized_prompts(self, override=None):
+        # if not stage1 and self.init_concepts:
+        if override == 'class' or not self.init_concepts:
+            return self.tokenized_class_prompts
+        elif override == 'concept' or self.init_concepts:
             return self.tokenized_concept_prompts
-        return self.tokenized_class_prompts
-
-
-    def average_concept_prompts_per_class(self):
-        n, s, d = self.ctx.shape
-        assert n == self.n_concepts
-
-        new_ctx = torch.empty((self.n_cls, s, d), dtype=self.dtype, device=self.device)
-
-        i = 0
-        for j, num in enumerate(self.num_concepts_per_class):
-            class_ctx = self.ctx[i:i+num].mean(dim=0)
-            new_ctx[j] = class_ctx
-
-            i += num
         
-        return new_ctx
+        return None # shouldn't get here
 
 
-    def forward(self, init=None):
+    def forward(self, init=None, override=None):
         # the init will be used when computing CLIP directional loss
+        # num = self.n_concepts if (not stage1 and self.init_concepts) else self.n_cls
         if init is not None:
             ctx = init
         else:
@@ -203,12 +192,12 @@ class ProtoTextPromptLearner(nn.Module):
         if ctx.dim() == 2:
             ctx = ctx.unsqueeze(0).expand(self.num, -1, -1)
 
-        if self.init_concepts:
-            prefix = self.concept_token_prefix
-            suffix = self.concept_token_suffix
-        else:
+        if override == 'class' or not self.init_concepts:
             prefix = self.class_token_prefix
             suffix = self.class_token_suffix
+        elif override == 'concept' or self.init_concepts:
+            prefix = self.concept_token_prefix
+            suffix = self.concept_token_suffix
 
         if self.batch_size is not None: 
             # This way only works for single-gpu setting (could pass batch size as an argument for forward())

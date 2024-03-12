@@ -26,12 +26,6 @@ def avg_entropy(outputs):
     avg_logits = torch.clamp(avg_logits, min=min_real)
     return -(avg_logits * torch.exp(avg_logits)).sum(dim=-1)
 
-
-def softmax_entropy(x, x_ema):# -> torch.Tensor:
-    """Entropy of softmax distribution from logits."""
-    return -0.5*(x_ema.softmax(1) * x.log_softmax(1)).sum(1)-0.5*(x.softmax(1) * x_ema.log_softmax(1)).sum(1)
-
-
 def log_results(top1, top5, batch_time, logname, set_id, tta_steps, bs, lr, concept_type=None, seed=None):
     os.makedirs('results', exist_ok=True)
 

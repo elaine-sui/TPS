@@ -25,32 +25,30 @@ def parse_args():
     parser.add_argument('--load', default=None, type=str, help='path to a pre-trained coop/cocoop')
     parser.add_argument('--seed', type=int, default=0)
 
-    parser.add_argument('--average_type', type=str, default=None, choices=[None, 'naive', 'weighted'])
+    # TPS
     parser.add_argument('--img_aug', action="store_true")
     parser.add_argument('--with_concepts', action="store_true")
-    parser.add_argument('--concept_type', type=str, default='labo', choices=['labo', 'iclr', 'labo_no_cond', 'iclr_no_cond', 'gpt4', 'gpt4_x_templates', 'gpt4_no_cond'], help='concepts to choose from')
+    parser.add_argument('--with_templates', action="store_true")
+    parser.add_argument('--with_coop', action="store_true")
+    parser.add_argument('--concept_type', type=str, default='gpt4', help='concepts to choose from')
     parser.add_argument('--logname', type=str)
 
     parser.add_argument('--init_concepts', action="store_true")
-    parser.add_argument('--combine_type', type=str, default='mean', choices=['mean', 'max', 'sum'])
-    
-    parser.add_argument('--weight', type=float, default=0.99, help='moving average weight [weight * prev + (1 - weight) * new]')
-    parser.add_argument('--class_concept', action="store_true")
     parser.add_argument('--per_label', action="store_true")
-    parser.add_argument('--verbose', action="store_true")
 
-    parser.add_argument('--select_top_p', type=float, default=0.5)
-    parser.add_argument('--confidence_selection', action="store_true")
     parser.add_argument('--text_shift', action='store_true', help='whether to use an text shiftscaler')
+    parser.add_argument('--img_shift', action='store_true', help='whether to use an image shiftscaler')
     parser.add_argument('--do_shift', action="store_true")
+    parser.add_argument('--do_scale', action="store_true")
+    parser.add_argument('--do_film', action='store_true')
 
     parser.add_argument('--concat_concepts', action='store_true')
-    parser.add_argument('--with_templates', action="store_true")
-    parser.add_argument('--learnable_class_weight_matrix', action="store_true")
     parser.add_argument('--macro_pooling', action='store_true')
 
-    parser.add_argument('--with_coop', action="store_true")
     parser.add_argument('--ensemble_concepts', action="store_true")
+    parser.add_argument('--num_classes', type=int, default=None)
+
+    parser.add_argument('--use_susx_feats', action='store_true')
 
     args = parser.parse_args()
 

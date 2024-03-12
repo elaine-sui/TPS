@@ -8,7 +8,9 @@ import numpy as np
 
 from tqdm import tqdm
 
-from model import load, tokenize, DOWNLOAD_ROOT
+import sys
+sys.path.append(os.getcwd())
+from model import load, tokenize
 from data.imagenet_prompts_clean import imagenet_classes, imagenet_templates
 from data.cls_to_names import (
     flower102_classes, 
@@ -44,13 +46,11 @@ CLASSES_DICT = {
     "cars": cars_classes,
 }
 
-arch='ViT-B/16'
 device='cuda'
-
-clip, _, _ = load(arch, device=device, download_root=DOWNLOAD_ROOT)
+DOWNLOAD_ROOT='checkpoints/clip'
 
 def make_descriptor_sentence(descriptor):
-    # Code from https://github.com/sachit-menon/classify_by_description_release/blob/master/descriptor_strings.py
+# Code from https://github.com/sachit-menon/classify_by_description_release/blob/master/descriptor_strings.py#L43
     if descriptor.startswith('a') or descriptor.startswith('an'):
         return f"which is {descriptor}"
     elif descriptor.startswith('has') or descriptor.startswith('often') or descriptor.startswith('typically') or descriptor.startswith('may') or descriptor.startswith('can'):
@@ -62,6 +62,8 @@ def make_descriptor_sentence(descriptor):
 
 
 def save_concepts(args):
+    clip, _, _ = load(args.arch, device=device, download_root=DOWNLOAD_ROOT)
+
     if args.no_cond:
         suffix = "_no_cond"
     elif args.x_templates:
@@ -69,17 +71,21 @@ def save_concepts(args):
     else:
         suffix = ""
 
-    gpt4_concepts_embeds_dir = f'concept_embeds_gpt4' + suffix
-    concept_dict_dir = 'concept_dict_gpt4' + suffix
+    gpt4_concepts_embeds_dir = os.path.join(args.arch.replace('/', '-').lower() + "_embeds", args.gpt4_concepts_embeds_dir + suffix)
 
     os.makedirs(gpt4_concepts_embeds_dir, exist_ok=True)
-    os.makedirs(concept_dict_dir, exist_ok=True)
 
     concepts_json = args.concepts_json
     dataset = args.dataset
 
     concept_embeds_path = os.path.join(gpt4_concepts_embeds_dir, f'{dataset}.pkl')
-    concept_dict_path = os.path.join(concept_dict_dir, f'{dataset}.json')
+
+    print(f"Saving concept embeds to {concept_embeds_path}")
+
+    if args.save_concept_dict:
+        concept_dict_dir = args.concept_dict_dir + suffix
+        os.makedirs(concept_dict_dir, exist_ok=True)
+        concept_dict_path = os.path.join(concept_dict_dir, f'{dataset}.json')
 
     print(f"Loading concepts from {concepts_json}")
     with open(concepts_json, 'r') as f:
@@ -121,9 +127,10 @@ def save_concepts(args):
 
         concept_dict_all[classname_tpt] = prompts
     
-    print(f"Dumping concept dict to {concept_dict_path}")
-    with open(concept_dict_path, 'w') as f:
-        json.dump(concept_dict_all, f, indent=4)
+    if args.save_concept_dict:
+        print(f"Dumping concept dict to {concept_dict_path}")
+        with open(concept_dict_path, 'w') as f:
+            json.dump(concept_dict_all, f, indent=4)
     
     print(f"Dumping concept embeds to {concept_embeds_path}")
     with open(concept_embeds_path, 'wb') as f:
@@ -135,8 +142,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--concepts_json', type=str, default='concepts/imagenet-gpt4-full-v4.json')
     parser.add_argument('--dataset', type=str, default='ImageNet')
-    parser.add_argument('--no_cond', action="store_true", help='save concepts not conditioned on class name')
-    parser.add_argument('--x_templates', action="store_true", help='save concepts templated with CLIP imagenet templates')
+    parser.add_argument('--no_cond', action="store_true")
+    parser.add_argument('--x_templates', action="store_true")
+    parser.add_argument('--arch', type=str, default='ViT-B/16', choices=['ViT-B/16', 'RN50'])
+    parser.add_argument('--gpt4_concepts_embeds_dir', type=str, default='concept_embeds_gpt4')
+    parser.add_argument('--concept_dict_dir', type=str, default='concept_dict_gpt4')
+    parser.add_argument('--save_concept_dict', action='store_true')
 
     args = parser.parse_args()
 
