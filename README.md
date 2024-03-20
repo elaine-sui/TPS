@@ -56,12 +56,12 @@ Similar to TPT, the test sets are separated by `/` and we use the short-forms de
 If you use this repo in your research, please cite it as follows:
 
 ```
-@misc{sui_tps,
-  title={Just Shift It: Test-Time Prototype Shifting for Zero-Shot Generalization with Vision-Language Models},
-  author={Sui, Elaine and Wang, Xiaohan and Yeung-Levy, Serena},
-  year={2024},
-  eprint={}, # TODO
-  archivePrefix={arXiv},
-  primaryClass={cs.LG}
+@misc{sui2024tps,
+      title={Just Shift It: Test-Time Prototype Shifting for Zero-Shot Generalization with Vision-Language Models}, 
+      author={Elaine Sui and Xiaohan Wang and Serena Yeung-Levy},
+      year={2024},
+      eprint={2403.12952},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV}
 }
 ```
