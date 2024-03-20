@@ -5,7 +5,7 @@
 [![Pytorch](https://img.shields.io/badge/Pytorch-2.1-red.svg)](https://pytorch.org/get-started/previous-versions/#v21)
 
 This repo provides the PyTorch source code of our paper: 
-[*Just Shift It*: Test-Time Prototype Shifting for Zero-Shot Generalization with Vision-Language Models]
+[*Just Shift It*: Test-Time Prototype Shifting for Zero-Shot Generalization with Vision-Language Models](https://arxiv.org/abs/2403.12952)
 
 ## Abstract
 
